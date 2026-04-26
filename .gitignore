@@ -1,0 +1,9 @@
+credentials.json
+token.json
+stage_state.json
+logs/
+captures/
+__pycache__/
+*.pyc
+.env
+*.swp
