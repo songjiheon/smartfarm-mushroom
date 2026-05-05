@@ -10,6 +10,8 @@ from typing import Optional
 from sensor.sensor_data import SensorData
 from config  import MUSHROOM_PROFILES, PinConfig, RELAY_ACTIVE_LOW
 from stage_manager      import StageManager, Stage
+import board 
+import neopixel
 
 
 
@@ -67,7 +69,10 @@ class MushroomController:
         self._stage_manager    = stage_manager
         self.use_gpio          = use_gpio
         self._devices          = {}
-        
+        self._fan_on = False
+        self._fan_last_switch = 0
+        self._fan_min_interval = 60
+
     def _current_profile(self) -> dict:
         if self._stage_manager is None:
             return self._mushroom_profile[Stage.PINNING.value]
@@ -83,8 +88,13 @@ class MushroomController:
             self._devices = {
                 "humidifier": OutputDevice(PinConfig.HUMIDIFIER, active_high=False, initial_value=True),
                 "fan"       : OutputDevice(PinConfig.FAN,        active_high=False, initial_value=True),
-                "led"       : OutputDevice(PinConfig.LED,        active_high=False, initial_value=True),
             }
+        self._led = neopixe.NeoPixel(
+            board.D18,
+            45,
+            brightness=0.3,
+            auto_write=True 
+        )
         print(f"[Controller] 초기화 완료 ({self._mushroom_name})")
 
     def evaluate(self, data: SensorData) -> ControlResult:
@@ -99,8 +109,9 @@ class MushroomController:
         s1 = self._evaluate_temperature(data.temperature, p, alerts, actions)
         s2 = self._evaluate_humidity   (data.humidity,    p, actuator, alerts, actions)
         s3 = self._evaluate_light      (data.lux,         p, actuator, alerts, actions)
+        s4 = self._evaluate_co2         (data.co2,         p, actuator, alerts, actions)
 
-        for s in (s1, s2, s3):
+        for s in (s1, s2, s3, s4):
             status = _escalate(status, s)
         return ControlResult(stage=stage, status=status,
                              actuator=actuator, alerts=alerts, actions=actions)
@@ -141,8 +152,6 @@ class MushroomController:
             return ControlStatus.WARNING
 
         elif humi > p["humi_max"]:
-            actuator.fan = True
-            actions.append(f"환기팬 ON ({humi:.1f}% > {p['humi_max']}%)")
             return ControlStatus.WARNING
         actions.append(f"습도 정상 ({humi:.1f}%)")
         return ControlStatus.OK
@@ -175,6 +184,39 @@ class MushroomController:
             return ControlStatus.OK
         return ControlStatus.OK
     
+    #이산화탄소
+    def _evaluate_co2(self, co2, p, actuator, alerts, actions) -> ControlStatus:
+
+        if co2 is None:
+            alerts.append("CO2 센서 읽기 실패")
+            return ControlStatus.WARNING
+
+        now = time.time()
+
+        if co2 > p["co2_max"]:
+            if not self._fan_on and (now - self._fan_last_switch > self._fan_min_interval):
+                self._fan_on = True
+                self._fan_last_switch = now
+
+        elif co2 < p["co2_max"] - 200:
+            if self._fan_on and (now - self._fan_last_switch > self._fan_min_interval):
+                self._fan_on = False
+                self._fan_last_switch = now
+        
+        actuator.fan = self._fan_on
+
+        if co2 > p["co2_danger"]:
+            alerts.append(f"CO2 위험: {co2} ppm")
+            actions.append("환기팬  ON")
+            return ControlStatus.DANGER
+
+        elif co2 > p["co2_max"]:
+            actions.append(f"환기팬 ON ({co2} ppm > {p['co2_max']})")
+            return ControlStatus.WARNING
+
+        actions.append(f"CO2 정상 ({co2} ppm)")
+        return ControlStatus.OK
+
     #GPIO
     def apply(self, actuator: ActuatorState) -> None:
         if not self.use_gpio:
@@ -188,9 +230,9 @@ class MushroomController:
         else:
             self._devices["humidifier"].off()
         if actuator.led:
-            self._devices["led"].on()
+            self._led.fill((0,80,0))
         else:
-            self._devices["led"].off()
+            self._led.fill((0,0,0))
 
     #전체 OFF
     def all_off(self):
@@ -202,12 +244,14 @@ class MushroomController:
         self.all_off()
         for d in self._devices.values():
             d.close()
+        self._led.fill((0, 0, 0))
         print("[Controller]  정리 완료")
 
 #테스트
 if __name__ == "__main__":
     from sensor.DHT11 import DHT11Sensor
     from sensor.CDS   import CdSSensor
+    from sensor.MHZ14A import MHZ14ASensor
     
     sm=StageManager()
     sm.start()
@@ -218,16 +262,20 @@ if __name__ == "__main__":
    
     dht = DHT11Sensor()
     cds = CdSSensor()
+    co2 = MHZ14ASensor()
+
     dht.setup()
     cds.setup()
+    co2.setup()
 
     print("테스트 시작")
     try:
         while True:
             temp, humi = dht.read()
             lux, raw   = cds.read()
+            co2_val    = co2.read()
 
-            data   = SensorData(temperature=temp, humidity=humi, lux=lux, lux_raw=raw)
+            data   = SensorData(temperature=temp, humidity=humi, lux=lux, lux_raw=raw,co2=co2_val)
             result = ctrl.evaluate(data)
             result.print_report()
             ctrl.apply(result.actuator)
@@ -239,5 +287,6 @@ if __name__ == "__main__":
     finally:
         dht.cleanup()
         cds.cleanup()
+        co2.cleanup()
         ctrl.cleanup()
         
