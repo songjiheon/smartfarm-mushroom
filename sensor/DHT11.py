@@ -18,7 +18,7 @@ class DHT11Sensor:
 
     def setup(self) -> None:
         self._device = adafruit_dht.DHT11(self._pin)
-        print(f"[DHT11] Initialization complete (GPIO{PinConfig.DHT11_DATA})")
+        print(f"[DHT11] 초기화 완료 (GPIO{PinConfig.DHT11_DATA})")
 
     def read(self, retries: int = 3) -> Tuple[Optional[float], Optional[float]]:
         if self._device is None:
@@ -57,7 +57,7 @@ class DHT11Sensor:
 if __name__ == "__main__":
     sensor = DHT11Sensor()
     sensor.setup()
-    print("DHT11 standalone test (Ctrl+C to exit)")
+    print("DHT11 단독 테스트 (Ctrl+c 종료)")
     try:
         while True:
             temp, humi = sensor.read()
@@ -65,7 +65,7 @@ if __name__ == "__main__":
             if temp is not None:
                 print(f"[{ts}] Temp={temp:.1f}C Humi={humi:.1f}%")
             else:
-                print(f"[{ts}] Read failed")
+                print(f"[{ts}] 읽기 실패")
             time.sleep(3)
     except KeyboardInterrupt:
         pass
