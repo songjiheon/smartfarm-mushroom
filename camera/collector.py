@@ -7,7 +7,7 @@ from camera.capture  import CameraCapture
 from camera.upload import DriveUploader
 from stage_manager   import StageManager
 
-INTERVAL = 60 #1분마다 촬영
+INTERVAL = 10  #sec마다 촬영
 
 class DataCollector:
     def __init__(self, stage_manager=None):

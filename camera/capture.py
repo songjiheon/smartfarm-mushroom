@@ -45,8 +45,8 @@ if __name__ == "__main__":
     cam = CameraCapture()
     cam.setup()
 
-    INTERVAL = 30
-    
+    INTERVAL = 300 
+     
     try:
         while True:
             cam.capture()

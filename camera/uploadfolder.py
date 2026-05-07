@@ -60,31 +60,27 @@ class DriveUploader:
 
     def upload(self, file_path):
         file_name = os.path.basename(file_path)
+        try:
+            media = MediaFileUpload(file_path, mimetype="image/jpeg")
+            meta = {
+                "name": file_name,
+                "parents": [self._folder_id]}
+            self._service.files().create(body=meta, media_body=media, fields="id").execute()
+            print(f"[Drive] 업로드 완료: {file_name}")
+        except Exception as e:
+            print(f"[Drive] 실패: {file_name} - {e}")
 
-        media = MediaFileUpload(file_path, mimetype="image/jpeg")
-        meta = {
-            "name": file_name,
-            "parents": [self._folder_id]
-        }
-
-        self._service.files().create(
-            body=meta,
-            media_body=media,
-            fields="id"
-        ).execute()
-
-        print(f"[Drive] 업로드 완료: {file_name}")
-
-    def upload_folder(self, local_folder, extensions=(".jpg", ".jpeg"), max_workers=2):
-        files = [
+    def upload_folder(self, local_folder, extensions=(".jpg", ".jpeg"), max_workers=1):
+        files = sorted([
             os.path.join(local_folder, f)
             for f in os.listdir(local_folder)
             if f.lower().endswith(extensions)
-        ]
+        ])
 
         print(f"[Drive] 총 {len(files)}개 파일 업로드 시작")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             executor.map(self.upload, files)
+            
 if __name__ == "__main__":
     DriveUploader().upload_folder("captures")
