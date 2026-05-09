@@ -6,15 +6,12 @@ class PinConfig:
 
    HUMIDIFIER = 5
    FAN = 6
-   LED = 13
+   LED = 18
 
-class ADSConfig:
-   CHANNEL = 0
-   GAIN = 1
 
 class CdSConfig:
    RAW_MIN = 0
-   RAW_MAX = 26000
+   RAW_MAX = 1023
    LUX_MIN = 0.0
    LUX_MAX = 1000.0
 
