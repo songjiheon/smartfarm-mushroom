@@ -89,7 +89,7 @@ class MushroomController:
                 "humidifier": OutputDevice(PinConfig.HUMIDIFIER, active_high=False, initial_value=True),
                 "fan"       : OutputDevice(PinConfig.FAN,        active_high=False, initial_value=True),
             }
-        self._led = neopixe.NeoPixel(
+        self._led = neopixel.NeoPixel(
             board.D18,
             45,
             brightness=0.3,
@@ -163,24 +163,30 @@ class MushroomController:
             alerts.append("조도 센서 읽기 실패")
             return ControlStatus.WARNING
         lux_mode = p.get("lux_mode","off")
+        hour   = int(time.strftime("%H"))
+        minute = int(time.strftime("%M"))
 
-        if lux_mode == "off":
+        if lux_mode == "off" or not (8 <= hour <20):
             actuator.led = False
             actions.append(f"LED OFF")
             return ControlStatus.OK
 
-        if lux_mode == "flash":
-            actuator.led = True
-            actions.append(f"LED ON")
+        if lux_mode == "flash10":
+            if minute < 10:
+                actuator.led = True
+                actions.append(f"LED ON (발생 조명 10분)")
+            else:
+                actuator.led = False
+                actions.append(f"LED OFF (발생 조명 대기)")
             return ControlStatus.OK
 
-        if lux_mode == "cycle":
-            if lux < 300:
+        if lux_mode == "flash20":
+            if minute < 20:
                 actuator.led = True
-                actions.append(f"LED ON  ({lux:.0f})")
-                return ControlStatus.WARNING
-            actuator.led = False
-            actions.append(f"LED OFF {lux:.0f})")
+                actions.append(f"LED ON  (생육 조명 20분)")
+            else:
+                actuator.led = False
+                actions.append(f"LED OFF (생육 조명 대기)")
             return ControlStatus.OK
         return ControlStatus.OK
     
@@ -230,7 +236,7 @@ class MushroomController:
         else:
             self._devices["humidifier"].off()
         if actuator.led:
-            self._led.fill((0,80,0))
+            self._led.fill((0,40,0))
         else:
             self._led.fill((0,0,0))
 

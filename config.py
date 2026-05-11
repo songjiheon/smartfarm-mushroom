@@ -16,7 +16,7 @@ class CdSConfig:
    LUX_MAX = 1000.0
 
 class CO2Config:
-    CO2_PORT = "/dev/serial0"
+    CO2_PORT = "/dev/ttyAMA0"
 
 MUSHROOM_PROFILES = {
    "느타리":{
@@ -24,18 +24,14 @@ MUSHROOM_PROFILES = {
          "temp_min":21.0, "temp_max":23.0, "temp_target":22.0,
          "humi_min":90.0, "humi_max":95.0,
          "co2_max":1200, "co2_danger":2000,
-         "lux_mode":"flash",
-         "light_cycle_hour":1,
-         "light_on_sec":6,
+         "lux_mode":"flash10",
       },
       
       "생육":{
          "temp_min":16.0, "temp_max":21.0, "temp_target":18.0,
          "humi_min":75.0, "humi_max":85.0,
          "co2_max": 1500, "co2_danger": 2500,
-         "lux_mode":"cycle",
-         "light_cycle_hour":1,
-         "light_on_min":20,
+         "lux_mode":"flash20",
       },
       "수확":{
          "temp_min": 12.0, "temp_max": 16.0,
