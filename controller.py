@@ -173,22 +173,22 @@ class MushroomController:
             return ControlStatus.OK
 
         #1시간 마다 10분 ON
-        if lux_mode == "flash":
+        if lux_mode == "flash10":
             if minute < 10:
                 actuator.led = True
-                actions.append(f"LED ON (생육 cycle)")
+                actions.append(f"LED ON (발생 조명 10분)")
             else:
                 actuator.led = False
-                actions.append(f"LED OFF (생육 cycle 대기)")
+                actions.append(f"LED OFF (발생 조명 대기)")
             return ControlStatus.OK
 
-        if lux_mode == "cycle":
+        if lux_mode == "flash20":
             if minute < 20:
                 actuator.led = True
-                actions.append(f"LED ON (생육 cycle)")
+                actions.append(f"LED ON (생육 조명 20분)")
             else:
                 actuator.led = False
-                actions.append(f"LED OFF (생육 cycle 대기)")
+                actions.append(f"LED OFF (생육 조 대기)")
             return ControlStatus.OK
 
         return ControlStatus.OK
