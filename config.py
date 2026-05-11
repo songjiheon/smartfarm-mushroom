@@ -36,7 +36,7 @@ MUSHROOM_PROFILES = {
       "수확":{
          "temp_min": 12.0, "temp_max": 16.0,
             "humi_min": 60.0, "humi_max": 70.0,
-            "co2_max": 1000, "co2_danger": 1800,
+            "co2_max": 1100, "co2_danger": 1100,
             "lux_mode": "off",
       }
    }

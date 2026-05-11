@@ -91,8 +91,8 @@ class MushroomController:
             }
         self._led = neopixel.NeoPixel(
             board.D18,
-            45,
-            brightness=0.3,
+            144,
+            brightness=0.15,
             auto_write=True 
         )
         print(f"[Controller] 초기화 완료 ({self._mushroom_name})")
@@ -162,32 +162,35 @@ class MushroomController:
         if lux is None:
             alerts.append("조도 센서 읽기 실패")
             return ControlStatus.WARNING
-        lux_mode = p.get("lux_mode","off")
-        hour   = int(time.strftime("%H"))
-        minute = int(time.strftime("%M"))
 
-        if lux_mode == "off" or not (8 <= hour <20):
+        lux_mode = p.get("lux_mode","off")
+        hour     = int(time.strftime("%H"))
+        minute   = int(time.strftime("%M"))
+
+        if lux_mode == "off" or not (8 <= hour < 20):
             actuator.led = False
             actions.append(f"LED OFF")
             return ControlStatus.OK
 
-        if lux_mode == "flash10":
+        #1시간 마다 10분 ON
+        if lux_mode == "flash":
             if minute < 10:
                 actuator.led = True
-                actions.append(f"LED ON (발생 조명 10분)")
+                actions.append(f"LED ON (생육 cycle)")
             else:
                 actuator.led = False
-                actions.append(f"LED OFF (발생 조명 대기)")
+                actions.append(f"LED OFF (생육 cycle 대기)")
             return ControlStatus.OK
 
-        if lux_mode == "flash20":
+        if lux_mode == "cycle":
             if minute < 20:
                 actuator.led = True
-                actions.append(f"LED ON  (생육 조명 20분)")
+                actions.append(f"LED ON (생육 cycle)")
             else:
                 actuator.led = False
-                actions.append(f"LED OFF (생육 조명 대기)")
+                actions.append(f"LED OFF (생육 cycle 대기)")
             return ControlStatus.OK
+
         return ControlStatus.OK
     
     #이산화탄소
