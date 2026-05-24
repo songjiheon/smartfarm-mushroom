@@ -4,7 +4,6 @@ class PinConfig:
    DHT11_DATA = 17
    CDS_DO = 27
 
-   HUMIDIFIER = 5
    FAN = 6
    LED = 18
 
