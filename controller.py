@@ -12,8 +12,8 @@ from config  import MUSHROOM_PROFILES, PinConfig, RELAY_ACTIVE_LOW
 from stage_manager      import StageManager, Stage
 import board 
 import neopixel
-
-
+from tapo_plug import TapoHumidifier
+import asyncio
 
 #우선순위
 _STATUS_ORDER = ["정상", "주의", "위험"]
@@ -71,7 +71,8 @@ class MushroomController:
         self._devices          = {}
         self._fan_on = False
         self._fan_last_switch = 0
-        self._fan_min_interval = 60
+        self._fan_min_interval = 0
+        self._tapo_humidifier = TapoHumidifier()
 
     def _current_profile(self) -> dict:
         if self._stage_manager is None:
@@ -86,8 +87,7 @@ class MushroomController:
     def setup(self) -> None:
         if self.use_gpio:
             self._devices = {
-                "humidifier": OutputDevice(PinConfig.HUMIDIFIER, active_high=False, initial_value=True),
-                "fan"       : OutputDevice(PinConfig.FAN,        active_high=False, initial_value=True),
+                "fan"       : OutputDevice(PinConfig.FAN,        active_high=not RELAY_ACTIVE_LOW, initial_value=False),
             }
         self._led = neopixel.NeoPixel(
             board.D18,
@@ -95,6 +95,7 @@ class MushroomController:
             brightness=0.15,
             auto_write=True 
         )
+        asyncio.run(self._tapo_humidifier.setup())
         print(f"[Controller] 초기화 완료 ({self._mushroom_name})")
 
     def evaluate(self, data: SensorData) -> ControlResult:
@@ -166,12 +167,12 @@ class MushroomController:
         lux_mode = p.get("lux_mode","off")
         hour     = int(time.strftime("%H"))
         minute   = int(time.strftime("%M"))
-
+        """
         if lux_mode == "off" or not (8 <= hour < 20):
             actuator.led = False
             actions.append(f"LED OFF")
             return ControlStatus.OK
-
+        """
         #1시간 마다 10분 ON
         if lux_mode == "flash10":
             if minute < 10:
@@ -188,7 +189,7 @@ class MushroomController:
                 actions.append(f"LED ON (생육 조명 20분)")
             else:
                 actuator.led = False
-                actions.append(f"LED OFF (생육 조 대기)")
+                actions.append(f"LED OFF (생육 조명 대기)")
             return ControlStatus.OK
 
         return ControlStatus.OK
@@ -202,12 +203,12 @@ class MushroomController:
 
         now = time.time()
 
-        if co2 > p["co2_max"]:
+        if co2 >= p["co2_max"]:
             if not self._fan_on and (now - self._fan_last_switch > self._fan_min_interval):
                 self._fan_on = True
                 self._fan_last_switch = now
 
-        elif co2 < p["co2_max"] - 200:
+        elif co2 < p["co2_max"]:
             if self._fan_on and (now - self._fan_last_switch > self._fan_min_interval):
                 self._fan_on = False
                 self._fan_last_switch = now
@@ -234,14 +235,12 @@ class MushroomController:
             self._devices["fan"].on()
         else:
             self._devices["fan"].off()
-        if actuator.humidifier:
-            self._devices["humidifier"].on()
-        else:
-            self._devices["humidifier"].off()
         if actuator.led:
             self._led.fill((0,40,0))
         else:
             self._led.fill((0,0,0))
+            
+        asyncio.run(self._tapo_humidifier.apply(actuator.humidifier))
 
     #전체 OFF
     def all_off(self):
@@ -250,6 +249,7 @@ class MushroomController:
                 d.off()
  
     def cleanup(self):
+        asyncio.run(self._tapo_humidifier.cleanup())
         self.all_off()
         for d in self._devices.values():
             d.close()
@@ -276,14 +276,13 @@ if __name__ == "__main__":
     dht.setup()
     cds.setup()
     co2.setup()
-
+    
     print("테스트 시작")
     try:
         while True:
             temp, humi = dht.read()
             lux, raw   = cds.read()
             co2_val    = co2.read()
-
             data   = SensorData(temperature=temp, humidity=humi, lux=lux, lux_raw=raw,co2=co2_val)
             result = ctrl.evaluate(data)
             result.print_report()
