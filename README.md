@@ -112,7 +112,7 @@ sudo reboot
 
 
 
-### . 실행
+### 3. 실행
 
 ```bash
 python3 controller.py
