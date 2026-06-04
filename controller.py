@@ -1,7 +1,10 @@
 """
 센서 데이터 -> 환경 판단 -> 장치 제어
+AI 모델로 단계(발생/생육/수확)를 받아
+단계별 profile을 기준으로 모듈 제어
 """
 
+import json
 import time
 from gpiozero import OutputDevice
 from dataclasses import dataclass, field
@@ -9,14 +12,17 @@ from enum import Enum
 from typing import Optional
 from sensor.sensor_data import SensorData
 from config  import MUSHROOM_PROFILES, PinConfig, RELAY_ACTIVE_LOW
-from stage_manager      import StageManager, Stage
 import board 
 import neopixel
-
-
+from tapo_plug import TapoHumidifier
+import asyncio
+from ai.predictor import get_current_stage, capture_and_predict
+import threading
 
 #우선순위
 _STATUS_ORDER = ["정상", "주의", "위험"]
+
+STATUS_FILE = "/home/pi/mushroom/status.json"
 
 class ControlStatus(Enum):
     OK = "정상"
@@ -51,7 +57,7 @@ class ControlResult:
 
     def print_report(self):
         print(f"\n{'-'*50}")
-        print(f"[{time.strftime('%H:%M:%S')}] 제어 상태: {self.status.value}")
+        print(f"[{time.strftime('%H:%M:%S')}] 단계: {self.stage} |  제어 상태: {self.status.value}")
         print(f"------------------------------")
         for a in self.alerts:  print(f" {a}")
         for a in self.actions:  print(f" -> {a}")
@@ -61,42 +67,43 @@ class ControlResult:
 
 class MushroomController:
 
-    def __init__(self, mushroom: str ="느타리", stage_manager=None, use_gpio: bool =True):
+    def __init__(self, mushroom: str ="느타리", use_gpio: bool =True):
         if mushroom not in MUSHROOM_PROFILES:
             raise ValueError(f"지원 프로파일: {list(MUSHROOM_PROFILES.keys())}")
         self._mushroom_profile = MUSHROOM_PROFILES[mushroom]
         self._mushroom_name    = mushroom
-        self._stage_manager    = stage_manager
         self.use_gpio          = use_gpio
         self._devices          = {}
         self._fan_on = False
         self._fan_last_switch = 0
-        self._fan_min_interval = 60
-
+        self._fan_min_interval = 0
+        self._tapo_humidifier = TapoHumidifier()
+    
+    #AI predictor가 판단한 단계 반환
     def _current_profile(self) -> dict:
-        if self._stage_manager is None:
-            return self._mushroom_profile[Stage.PINNING.value]
-        return self._mushroom_profile[self._stage_manager.current_stage().value]
-        
-    def _current_stage_name(self) -> str:
-        if self._stage_manager is None:
-            return Stage.PINNING.value
-        return self._stage_manager.current_stage().value
+        stage = get_current_stage()
+        return self._mushroom_profile[stage]
 
+    #현재 단계
+    def _current_stage_name(self) -> str:
+        return get_current_stage()
+
+    #GPIO/LED/가습기 초기화
     def setup(self) -> None:
         if self.use_gpio:
             self._devices = {
-                "humidifier": OutputDevice(PinConfig.HUMIDIFIER, active_high=False, initial_value=True),
-                "fan"       : OutputDevice(PinConfig.FAN,        active_high=False, initial_value=True),
+                "fan"       : OutputDevice(PinConfig.FAN,        active_high=not RELAY_ACTIVE_LOW, initial_value=False),
             }
-        self._led = neopixe.NeoPixel(
+        self._led = neopixel.NeoPixel(
             board.D18,
-            45,
-            brightness=0.3,
+            144,
+            brightness=0.15,
             auto_write=True 
         )
+        asyncio.run(self._tapo_humidifier.setup())
         print(f"[Controller] 초기화 완료 ({self._mushroom_name})")
 
+    #센서 데이터 통합 판단
     def evaluate(self, data: SensorData) -> ControlResult:
         p        = self._current_profile()
         stage    = self._current_stage_name()
@@ -159,29 +166,41 @@ class MushroomController:
 
     #조도
     def _evaluate_light(self, lux, p, actuator, alerts, actions) -> ControlStatus:
+        """
         if lux is None:
             alerts.append("조도 센서 읽기 실패")
             return ControlStatus.WARNING
+        """
         lux_mode = p.get("lux_mode","off")
-
-        if lux_mode == "off":
+        hour     = int(time.strftime("%H"))
+        minute   = int(time.strftime("%M"))
+        
+        #밤 시간 및 off 상태에서 led OFF
+        
+        if lux_mode == "off" or not (8 <= hour < 20):
             actuator.led = False
-            actions.append(f"LED OFF")
+            
             return ControlStatus.OK
-
-        if lux_mode == "flash":
-            actuator.led = True
-            actions.append(f"LED ON")
-            return ControlStatus.OK
-
-        if lux_mode == "cycle":
-            if lux < 300:
+        
+        #1시간 마다 10분 ON
+        if lux_mode == "flash10":
+            if minute < 10:
                 actuator.led = True
-                actions.append(f"LED ON  ({lux:.0f})")
-                return ControlStatus.WARNING
-            actuator.led = False
-            actions.append(f"LED OFF {lux:.0f})")
+                #actions.append(f"LED ON (발생 조명 10분)")
+            else:
+                actuator.led = False
+                #actions.append(f"LED OFF (발생 조명 대기)")
             return ControlStatus.OK
+
+        if lux_mode == "flash20":
+            if minute < 20:
+                actuator.led = True
+                #actions.append(f"LED ON (생육 조명 20분)")
+            else:
+                actuator.led = False
+                #actions.append(f"LED OFF (생육 조명 대기)")
+            return ControlStatus.OK
+
         return ControlStatus.OK
     
     #이산화탄소
@@ -193,12 +212,12 @@ class MushroomController:
 
         now = time.time()
 
-        if co2 > p["co2_max"]:
+        if co2 >= p["co2_max"]:
             if not self._fan_on and (now - self._fan_last_switch > self._fan_min_interval):
                 self._fan_on = True
                 self._fan_last_switch = now
 
-        elif co2 < p["co2_max"] - 200:
+        elif co2 < p["co2_max"]:
             if self._fan_on and (now - self._fan_last_switch > self._fan_min_interval):
                 self._fan_on = False
                 self._fan_last_switch = now
@@ -225,14 +244,12 @@ class MushroomController:
             self._devices["fan"].on()
         else:
             self._devices["fan"].off()
-        if actuator.humidifier:
-            self._devices["humidifier"].on()
-        else:
-            self._devices["humidifier"].off()
         if actuator.led:
-            self._led.fill((0,80,0))
+            self._led.fill((0,40,0))
         else:
             self._led.fill((0,0,0))
+            
+        asyncio.run(self._tapo_humidifier.apply(actuator.humidifier))
 
     #전체 OFF
     def all_off(self):
@@ -241,25 +258,39 @@ class MushroomController:
                 d.off()
  
     def cleanup(self):
+        asyncio.run(self._tapo_humidifier.cleanup())
         self.all_off()
         for d in self._devices.values():
             d.close()
         self._led.fill((0, 0, 0))
         print("[Controller]  정리 완료")
 
+
+def save_status(temp, humi, co2, lux, stage):
+    status = {
+        "temperature": temp,
+        "humidity": humi,
+        "co2": co2,
+        "light": lux,
+        "growth_stage": stage,
+        "timestamp": time.time()
+    }
+
+    with open(STATUS_FILE, "w", encoding="utf-8") as f:
+        json.dump(status, f, ensure_ascii=False, indent=2)
 #테스트
 if __name__ == "__main__":
     from sensor.DHT11 import DHT11Sensor
     from sensor.CDS   import CdSSensor
     from sensor.MHZ14A import MHZ14ASensor
     
-    sm=StageManager()
-    sm.start()
-    sm.print_status()
     
-    ctrl = MushroomController(mushroom="느타리", stage_manager=sm, use_gpio=True)
+    #셋업 및 카메라 스레드
+    ctrl = MushroomController(mushroom="느타리", use_gpio=True)
     ctrl.setup()
-   
+    t = threading.Thread(target = capture_and_predict, daemon = True)
+    t.start()    
+
     dht = DHT11Sensor()
     cds = CdSSensor()
     co2 = MHZ14ASensor()
@@ -267,20 +298,27 @@ if __name__ == "__main__":
     dht.setup()
     cds.setup()
     co2.setup()
-
-    print("테스트 시작")
+    
+    print("시작")
     try:
         while True:
             temp, humi = dht.read()
             lux, raw   = cds.read()
             co2_val    = co2.read()
-
             data   = SensorData(temperature=temp, humidity=humi, lux=lux, lux_raw=raw,co2=co2_val)
             result = ctrl.evaluate(data)
             result.print_report()
             ctrl.apply(result.actuator)
 
-            time.sleep(3)
+            save_status(
+                temp=temp,
+                humi=humi,
+                co2=co2_val,
+                lux=lux,
+                stage=get_current_stage()
+            )
+
+            time.sleep(6)
 
     except KeyboardInterrupt:
         print("\n종료")
