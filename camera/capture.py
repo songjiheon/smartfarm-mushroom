@@ -54,7 +54,7 @@ if __name__ == "__main__":
     cam = CameraCapture(resolution=(1280, 720), device_index=0)
     cam.setup()
 
-    INTERVAL = 300 
+    INTERVAL = 5 
      
     try:
         while True:
