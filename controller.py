@@ -4,6 +4,7 @@ AI 모델로 단계(발생/생육/수확)를 받아
 단계별 profile을 기준으로 모듈 제어
 """
 
+import json
 import time
 from gpiozero import OutputDevice
 from dataclasses import dataclass, field
