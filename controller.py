@@ -21,6 +21,8 @@ import threading
 #우선순위
 _STATUS_ORDER = ["정상", "주의", "위험"]
 
+STATUS_FILE = "/home/pi/mushroom/status.json"
+
 class ControlStatus(Enum):
     OK = "정상"
     WARNING = "주의"
@@ -173,6 +175,7 @@ class MushroomController:
         minute   = int(time.strftime("%M"))
         
         #밤 시간 및 off 상태에서 led OFF
+        
         if lux_mode == "off" or not (8 <= hour < 20):
             actuator.led = False
             
@@ -261,6 +264,19 @@ class MushroomController:
         self._led.fill((0, 0, 0))
         print("[Controller]  정리 완료")
 
+
+def save_status(temp, humi, co2, lux, stage):
+    status = {
+        "temperature": temp,
+        "humidity": humi,
+        "co2": co2,
+        "light": lux,
+        "growth_stage": stage,
+        "timestamp": time.time()
+    }
+
+    with open(STATUS_FILE, "w", encoding="utf-8") as f:
+        json.dump(status, f, ensure_ascii=False, indent=2)
 #테스트
 if __name__ == "__main__":
     from sensor.DHT11 import DHT11Sensor
@@ -292,6 +308,14 @@ if __name__ == "__main__":
             result = ctrl.evaluate(data)
             result.print_report()
             ctrl.apply(result.actuator)
+
+            save_status(
+                temp=temp,
+                humi=humi,
+                co2=co2_val,
+                lux=lux,
+                stage=get_current_stage()
+            )
 
             time.sleep(6)
 
