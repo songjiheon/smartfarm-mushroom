@@ -57,13 +57,14 @@ def predict(image_path):
         'all_probs':  {LABELS[i]: round(float(output[i])*100, 1)
                        for i in range(len(LABELS))}
     }
-
+"""
 # ── 카메라로 1분마다 자동 촬영 + 예측 ─────────────────────
 def capture_and_predict():
-    cap = cv2.VideoCapture(0)   # 카메라 열기
+    #cap = cv2.VideoCapture(0)   # 카메라 열기
     global _last_stage
 
     while True:
+
         # 사진 찍기
         ret, frame = cap.read()
         if not ret:
@@ -75,6 +76,7 @@ def capture_and_predict():
         image_path = f'/home/pi/mushroom/captures/{timestamp}.jpg'
         cv2.imwrite(image_path, frame)
 
+       
         # 예측
         result = predict(image_path)
         _last_stage = result['stage']
@@ -93,6 +95,53 @@ def capture_and_predict():
         time.sleep(60)
 
     cap.release()
+"""
+def capture_and_predict():
+    global _last_stage
+
+    CAPTURE_DIR = "/home/pi/mushroom/camera/captures"
+    # 실제 camera/captures 경로에 맞게 수정
+
+    while True:
+        try:
+            images = [
+                f for f in os.listdir(CAPTURE_DIR)
+                if f.lower().endswith((".jpg", ".jpeg", ".png"))
+            ]
+
+            if not images:
+                print("이미지가 없습니다.")
+                time.sleep(10)
+                continue
+
+            latest = max(
+                images,
+                key=lambda f: os.path.getmtime(
+                    os.path.join(CAPTURE_DIR, f)
+                )
+            )
+
+            image_path = os.path.join(CAPTURE_DIR, latest)
+
+            # AI 예측
+            result = predict(image_path)
+            _last_stage = result['stage']
+
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            print(f"\n[{timestamp}]")
+            print(f"사용 이미지 : {latest}")
+            print(f"현재 단계 : {result['stage']}")
+            print(f"확신도 : {result['confidence']:.1f}%")
+            print(f"추론 시간 : {result['elapsed_ms']:.0f}ms")
+            print(f"전체 확률 : {result['all_probs']}")
+
+            # save_to_db(timestamp, result)
+
+        except Exception as e:
+            print(f"예측 오류: {e}")
+
+        time.sleep(60)
 
 # ── DB 저장 함수 ────────────
 def save_to_db(timestamp, result):
