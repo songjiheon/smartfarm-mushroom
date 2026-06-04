@@ -26,6 +26,12 @@
 - **Framework:** TensorFlow Lite (tflite-runtime)
 - **Library:** OpenCV (opencv-python), Pillow
 
+### Server
+- **Framework:** Flask
+
+### Mobile App
+- **Framework:** Flutter
+
 ### Hardware Control (IoT)
 - **GPIO Framework:** gpiozero, rpi-lgpio
 - **Sensor & Actuator:** rpi_ws281x, adafruit-circuitpython-neopixel, pyserial, dht11
@@ -87,6 +93,9 @@
 python3 -m venv ~/smartfarm
 source ~/smartfarm/bin/activate
 
+#서버 패키지
+pip install flask
+
 # AI 및 컴퓨터 비전 관련 패키지
 pip install tflite-runtime opencv-python pillow
 
@@ -96,7 +105,7 @@ pip install gpiozero rpi-lgpio
 # 센서, 스마트플러그 및 LED 패키지
 pip install pyserial                  # MH-Z14A (CO2)
 pip install tapo                      # Tapo 스마트플러그
-pip install rpi_ws281x adafruit-circuitpython-neopixel
+pip install rpi_ws281x adafruit-circuitpython-neopixel adafruit-blinka
 pip install dht11
 ```
 
@@ -109,10 +118,16 @@ echo "dtparam=spi=on" | sudo tee -a /boot/firmware/config.txt
 echo "enable_uart=1" | sudo tee -a /boot/firmware/config.txt
 sudo reboot
 ```
+### 3. 환경 변수 설정
+`.env` 파일을 프로젝트 루트에 생성하세요:
+```env
+TAPO_IP=192.168.x.x
+TAPO_EMAIL=your@email.com
+TAPO_PASSWORD=yourpassword
+```
 
 
-
-### 3. 실행
+### 4. 실행
 
 ```bash
 python3 controller.py
@@ -126,7 +141,7 @@ python3 controller.py
 
 ```
 smartfarm/
-├── controller.py             # 메인 실행 진입점
+├── controller.py             # 메인 실행 진입점(환경 자동 제어)
 ├── config.py                 # 생장 단계별 기준 값
 ├── sensors/
 │   ├── DHT11.py              # 온습도 센서 
@@ -135,11 +150,16 @@ smartfarm/
 │   └── sensor_data.py        # 센서 데이터 통합
 ├── camera/
 │   └── capture.py            # 카메라 촬영 모듈
+│   └── captures/             # 이미지 저장 폴더
 ├── ai/
 │   ├── model_fp16.tflite     # AI 생장 단계 분류 모델
 │   └── predictor.py          # 생장 단계 추론
-└── tapo_plug.py              # 가습기 플러그 연결
-#통신 기능 추가 예정
+├── server/
+│   ├── app_server.py         # Flask API 서버
+│   ├── app_server_backup.py  # 백업 서버
+│   └── test_app_server.py    # 서버 테스트
+├── tapo_plug.py              # 가습기 플러그 연결
+└── status.json               # 통합 상태 데이터 저장 파일(통신용)
 ```
 ---
 ## 📱 모바일 앱
@@ -150,7 +170,7 @@ smartfarm/
 ## 👥 팀원
 | 이름 | 역할 |
 |------|------|
-| 장조성 | Project Leader (일정 조정 및 서류 처리) |
+| 장조성 | Project Leader (일정 조정&서류 처리 및 IoT 장비 설치) |
 | 최동렬 | Back-end (AI 모델&DB 설계 및 구현) |
 | 이도현 | App Build (앱 구현) |
 | 송지헌 | Raspberry Pi (라즈베리파이 모델 구현) |
