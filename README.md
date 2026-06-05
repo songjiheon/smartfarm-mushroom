@@ -13,6 +13,14 @@
 5. **예외 처리 및 경고:** 이상 수치 감지 시 경고 메시지 출력 및 단계별 조치 적용
 ---
 
+## 📷 프로그램 사진
+
+<p>
+  <img src="https://github.com/user-attachments/assets/55613663-1760-4496-a0f7-bfe7ecec12b5" width="300"height="307"/>
+  <img src="https://github.com/user-attachments/assets/fc5c2314-7127-4c06-abd1-e02bd8c64351" width="230" />
+</p>
+---
+
 ## 🧰 기술 스택 (Tech Stack)
 
 ### Hardware & OS
